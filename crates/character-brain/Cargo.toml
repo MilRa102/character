@@ -1,0 +1,20 @@
+[package]
+name = "character-brain"
+description = "LLM dialog and tool calling for the Character companion, built on the RIG framework"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rig.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rig = { workspace = true, features = ["test-utils"] }
+tokio = { workspace = true, features = ["macros", "rt"] }

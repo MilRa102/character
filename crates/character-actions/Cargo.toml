@@ -1,0 +1,16 @@
+[package]
+name = "character-actions"
+description = "Allowlist of actions the companion may execute: manifests, risk levels, confirmation policy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

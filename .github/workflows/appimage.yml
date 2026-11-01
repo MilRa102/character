@@ -1,0 +1,70 @@
+name: AppImage
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: appimage-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install packaging prerequisites
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends desktop-file-utils file
+      - name: Build AppImage
+        run: packaging/appimage/build.sh
+      # The target platform is Arch Linux, so check the result in a pristine Arch container.
+      # Containers have no FUSE, hence extract-and-run.
+      - name: Smoke test on Arch Linux
+        run: |
+          docker run --rm --volume "$PWD/dist:/dist:ro" archlinux:latest \
+            sh -c '/dist/Character-*-x86_64.AppImage --appimage-extract-and-run --version'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Character-AppImage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: Character-AppImage
+          path: dist
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected="dist/Character-${GITHUB_REF_NAME#v}-x86_64.AppImage"
+          if [[ ! -f $expected ]]; then
+            echo "tag $GITHUB_REF_NAME does not match the built version:" >&2
+            ls dist >&2
+            exit 1
+          fi
+          chmod +x dist/*.AppImage
+          gh release create "$GITHUB_REF_NAME" dist/*.AppImage \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag

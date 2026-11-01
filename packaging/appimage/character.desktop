@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Character
+GenericName=AI companion
+Comment=AI companion that lives in a drawer at the top of the screen
+Exec=character
+Icon=character
+Terminal=false
+Categories=Utility;
+Keywords=assistant;companion;ai;
