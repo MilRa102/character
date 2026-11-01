@@ -1,0 +1,19 @@
+[package]
+name = "character-core"
+description = "Central daemon of the Character companion: event bus, FSM state and orchestration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+character-types.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

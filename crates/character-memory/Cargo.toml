@@ -1,0 +1,12 @@
+[package]
+name = "character-memory"
+description = "Short/long-term memory, settings and profile storage of the Character companion"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Character (placeholder icon)</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2d323b"/>
+      <stop offset="1" stop-color="#14171c"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62d0d6"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="fur" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a505b"/>
+      <stop offset="1" stop-color="#363b44"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <path d="M176 188c34 6 58-14 62-48-22 18-44 20-64 14z" fill="url(#glow)" opacity="0.9"/>
+  <path d="M54 62l36 38h76l36-38 10 82c0 40-36 70-84 70s-84-30-84-70z" fill="url(#fur)"/>
+  <path d="M66 92l18 20-20 8z" fill="#62d0d6"/>
+  <path d="M190 92l-18 20 20 8z" fill="#62d0d6"/>
+  <ellipse cx="100" cy="148" rx="9" ry="13" fill="#62d0d6"/>
+  <ellipse cx="156" cy="148" rx="9" ry="13" fill="#62d0d6"/>
+  <path d="M120 176h16l-8 9z" fill="#14171c"/>
+</svg>
