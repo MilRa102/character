@@ -4,6 +4,8 @@
 # The same script runs in CI (.github/workflows/appimage.yml) and locally.
 # Needs: cargo, curl, sha256sum, file (required by appimagetool);
 # desktop-file-validate is used when available.
+# UI build dependencies: pkg-config, cmake, Wayland, xkbcommon, fontconfig,
+# FreeType and expat development packages (see README.md).
 # The packaging tools are pinned by release tag and sha256 and cached in target/appimage/tools.
 set -euo pipefail
 
@@ -69,7 +71,13 @@ rm -rf "$appdir"
     --appdir "$appdir" \
     --executable "$binary" \
     --desktop-file "$desktop_file" \
-    --icon-file "$icon_file"
+    --icon-file "$icon_file" \
+    --exclude-library 'libwayland-*.so*' \
+    --exclude-library 'libEGL.so*' \
+    --exclude-library 'libGL*.so*' \
+    --exclude-library 'libvulkan.so*' \
+    --exclude-library 'libgbm.so*' \
+    --exclude-library 'libdrm*.so*'
 
 "$tools/appimagetool-x86_64.AppImage" \
     --runtime-file "$tools/runtime-x86_64" \

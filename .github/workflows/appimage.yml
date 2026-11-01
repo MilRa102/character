@@ -27,8 +27,12 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install packaging prerequisites
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends desktop-file-utils file
+      - name: Install UI and packaging prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            desktop-file-utils file pkg-config cmake libwayland-dev libxkbcommon-dev \
+            libfontconfig1-dev libfreetype-dev libexpat1-dev
       - name: Build AppImage
         run: packaging/appimage/build.sh
       # The target platform is Arch Linux, so check the result in a pristine Arch container.
@@ -36,7 +40,11 @@ jobs:
       - name: Smoke test on Arch Linux
         run: |
           docker run --rm --volume "$PWD/dist:/dist:ro" archlinux:latest \
-            sh -c '/dist/Character-*-x86_64.AppImage --appimage-extract-and-run --version'
+            sh -ec '
+              pacman -Syu --noconfirm --needed wayland libxkbcommon fontconfig ttf-dejavu
+              /dist/Character-*-x86_64.AppImage --appimage-extract-and-run --version
+              /dist/Character-*-x86_64.AppImage --appimage-extract-and-run --help
+            '
       - uses: actions/upload-artifact@v7
         with:
           name: Character-AppImage

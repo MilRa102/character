@@ -10,3 +10,8 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+character-types.workspace = true
+libcosmic.workspace = true
+tracing.workspace = true
