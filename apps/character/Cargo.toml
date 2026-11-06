@@ -15,6 +15,7 @@ workspace = true
 anyhow.workspace = true
 character-core.workspace = true
 character-types.workspace = true
+character-ui.workspace = true
 clap.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
 tracing.workspace = true
