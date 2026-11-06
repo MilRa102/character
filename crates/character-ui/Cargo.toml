@@ -12,6 +12,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+character-brain.workspace = true
 character-types.workspace = true
+character-voice.workspace = true
 libcosmic.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 tracing.workspace = true

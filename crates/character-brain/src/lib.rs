@@ -47,12 +47,42 @@ impl Brain {
         Self::new(config.clone().client().completion(model), preamble)
     }
 
+    /// Creates a brain for the local Ollama daemon.
+    ///
+    /// `CHARACTER_OLLAMA_URL` may override the default endpoint.
+    pub fn local_ollama(model: &str, preamble: impl Into<String>) -> Self {
+        let config = match std::env::var("CHARACTER_OLLAMA_URL") {
+            Ok(url) => OllamaConfig::new().with_base_url(url),
+            Err(_) => OllamaConfig::new(),
+        };
+        Self::ollama(&config, model, preamble)
+    }
+
     /// Answers a single user message.
     ///
     /// An error (for example an unreachable daemon) is not fatal: the companion
     /// keeps working with rule-based reactions.
     pub async fn reply(&self, text: &str) -> Result<String, BrainError> {
         Ok(self.agent.prompt(text).await?.output())
+    }
+
+    /// Answers a message with the preceding turns included as local context.
+    pub async fn reply_with_context(
+        &self,
+        text: &str,
+        history: &[(String, String)],
+    ) -> Result<String, BrainError> {
+        let prompt = if history.is_empty() {
+            text.to_owned()
+        } else {
+            let turns = history
+                .iter()
+                .map(|(user, assistant)| format!("User: {user}\nAssistant: {assistant}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!("Conversation so far:\n{turns}\nUser: {text}\nAssistant:")
+        };
+        self.reply(&prompt).await
     }
 }
 
@@ -83,6 +113,25 @@ mod tests {
         let request = format!("{:?}", requests[0]);
         assert!(request.contains("You are a fox."), "{request}");
         assert!(request.contains("pause the music"), "{request}");
+    }
+
+    #[tokio::test]
+    async fn includes_previous_turns_in_the_conversation_context() {
+        let model = MockCompletionModel::text("The music is paused.");
+        let brain = Brain::new(model.clone(), DEFAULT_PREAMBLE);
+
+        brain
+            .reply_with_context(
+                "And turn the lights off",
+                &[("Pause the music".into(), "Done.".into())],
+            )
+            .await
+            .unwrap();
+
+        let request = format!("{:?}", model.requests()[0]);
+        assert!(request.contains("Pause the music"), "{request}");
+        assert!(request.contains("Done."), "{request}");
+        assert!(request.contains("And turn the lights off"), "{request}");
     }
 
     #[tokio::test]

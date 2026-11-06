@@ -1,6 +1,6 @@
 [package]
 name = "character-voice"
-description = "Voice pipeline of the Character companion: wake-word, VAD, STT, TTS"
+description = "Local push-to-talk voice capture, transcription and speech output"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,3 +10,9 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+reqwest.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

@@ -4,9 +4,9 @@ AI-компаньон в «шторке» сверху экрана для ра�
 слушает обращения и выполняет ограниченный набор действий.
 Подробнее — в [ARCHITECTURE.md](ARCHITECTURE.md), [CHARACTER.md](CHARACTER.md) и [DIAGRAMS.md](DIAGRAMS.md).
 
-> **Статус: MVP-0.** Реализована отдельная layer-shell-шторка: статичный лисёнок Fen,
-> четыре эмоции, тултип и ручные демонстрационные события.
-> Системные события, микрофон, LLM и исполнение действий к UI пока не подключены.
+> **Статус: MVP-2 в работе.** Реализована layer-shell-шторка с ручными демонстрационными
+> событиями и первый голосовой срез: push-to-talk, локальная транскрипция, диалог с Ollama
+> и опциональное локальное озвучивание. Системные события и исполнение действий пока не подключены.
 
 ## Структура
 
@@ -24,9 +24,9 @@ packaging/appimage/   сборка AppImage (скрипт, .desktop, иконк�
 | `character-core` | центральный демон: шина событий, FSM | заглушка: стартует и ждёт сигнал завершения |
 | `character-actions` | allowlist-действия, уровни риска | манифест действия и уровни риска |
 | `character-brain` | диалог и tool calling на [RIG](https://rig.rs/docs) | обёртка над агентом RIG, тесты на mock-модели |
-| `character-ui` | шторка, рендер персонажа (libcosmic) | MVP-0: layer-shell, четыре эмоции, тултип, ручные события |
+| `character-ui` | шторка, рендер персонажа (libcosmic) | MVP-0 + MVP-2: ручные события, push-to-talk, диалог |
 | `character-watch` | наблюдатель D-Bus (zbus) | каркас |
-| `character-voice` | wake-word, STT, TTS | каркас |
+| `character-voice` | локальный STT/TTS и аудиозапись | MVP-2: ALSA → Ollama audio API (Gemma 4), Piper/PipeWire |
 | `character-memory` | память, настройки, профиль | каркас |
 
 ## Разработка
@@ -74,6 +74,31 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 fullscreen/DND и анимации относятся к следующим этапам. Размытие фона не требуется:
 используется полупрозрачная панель и масштабируемая векторная отрисовка персонажа.
 
+### MVP-2: push-to-talk
+
+Голос по умолчанию выключен. Откройте шторку, нажмите **Enable voice**, затем удерживайте
+**Hold to talk** во время речи и отпустите для отправки. Уход курсора за пределы
+кнопки также завершает запись. Распознанный текст отправляется только локальному Ollama;
+вызовы инструментов и системные действия не подключены. В текущем диалоге хранится не более
+восьми последних ходов, только в памяти процесса.
+
+Для голосового ввода нужны `arecord` (ALSA utilities) и запущенный локальный Ollama; по умолчанию
+используется `gemma4:e4b`, поддерживающая аудио. Ollama получает WAV напрямую через
+`/v1/audio/transcriptions`, отдельная модель Whisper не нужна. Для озвучивания дополнительно
+нужны Piper CLI, модель Piper и `pw-play` (PipeWire). Настройки задаются переменными окружения:
+
+```sh
+export CHARACTER_PIPER_MODEL="$HOME/.local/share/character/en_US-lessac-medium.onnx" # optional
+export CHARACTER_OLLAMA_MODEL="gemma4:e4b" # optional; must support audio input
+export CHARACTER_OLLAMA_URL="http://localhost:11434" # optional
+```
+
+Файл WAV создаётся с правами владельца `0600` в системном временном каталоге, отправляется
+на настроенный endpoint Ollama и удаляется после транскрипции или при отмене записи. При
+переопределении `CHARACTER_OLLAMA_URL` аудио отправляется именно этому серверу. Текст разговора
+не сохраняется на диск и очищается при выходе. Если `CHARACTER_PIPER_MODEL` не задан, ответ
+остаётся доступен текстом без озвучивания. Исполняемые файлы и модели не включены в AppImage.
+
 ## LLM: RIG
 
 Диалог строится на [RIG](https://rig.rs/docs). `character_brain::Brain` оборачивает агента RIG:
@@ -82,7 +107,8 @@ fullscreen/DND и анимации относятся к следующим эт
 - `Brain::ollama(&OllamaConfig, model, preamble)` — локальный Ollama (по умолчанию `http://localhost:11434`).
 
 Локальные модели — по умолчанию, облако — опционально (ARCHITECTURE.md, §1 и §7). Тестам LLM не нужен:
-они используют mock-модель RIG. `character-core` пока не зависит от `character-brain`, поэтому RIG в AppImage ещё не попадает.
+они используют mock-модель RIG. Голосовой путь использует Ollama из `character-ui`; инструменты
+голосового ввода/вывода и модели остаются внешними локальными зависимостями и в AppImage не включаются.
 
 ## AppImage
 
@@ -133,8 +159,10 @@ Smoke-test CI проверяет запуск CLI, но не отрисовку:
 
 ## Что дальше
 
-Порядок — по [дорожной карте](ARCHITECTURE.md#9-дорожная-карта). Ближайший шаг — MVP-1:
-`character-watch` (notifications, UPower, NetworkManager, MPRIS) и правила реакций без LLM.
+Порядок — по [дорожной карте](ARCHITECTURE.md#9-дорожная-карта). Следующие части MVP-2 —
+wake-word и проверка аудиоцикла; затем `character-watch` (notifications, UPower,
+NetworkManager, MPRIS) и правила реакций MVP-1. Безопасные действия и allowlist относятся
+к последующим этапам и пока не подключены.
 Также позже: разделение на процессы с D-Bus-интерфейсом `org.character.Core1` и AppStream metainfo (после выбора app-id).
 
 ## Лицензия

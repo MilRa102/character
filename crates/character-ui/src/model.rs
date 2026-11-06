@@ -101,7 +101,7 @@ impl Drawer {
 
     pub fn size(&self) -> (u32, u32) {
         if self.expanded() {
-            (440, 280)
+            (520, 520)
         } else {
             (160, 32)
         }
@@ -163,7 +163,7 @@ mod tests {
         assert!(drawer.deadline.is_none());
         drawer.update(Input::Toggle, Instant::now());
         assert!(drawer.expanded());
-        assert_eq!(drawer.size(), (440, 280));
+        assert_eq!(drawer.size(), (520, 520));
     }
 
     #[test]

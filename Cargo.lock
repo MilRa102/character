@@ -1403,14 +1403,23 @@ dependencies = [
 name = "character-ui"
 version = "0.1.0"
 dependencies = [
+ "character-brain",
  "character-types",
+ "character-voice",
  "libcosmic",
+ "tokio",
  "tracing",
 ]
 
 [[package]]
 name = "character-voice"
 version = "0.1.0"
+dependencies = [
+ "reqwest 0.13.5",
+ "serde",
+ "thiserror 2.0.21",
+ "tracing",
+]
 
 [[package]]
 name = "character-watch"
@@ -8105,6 +8114,7 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
