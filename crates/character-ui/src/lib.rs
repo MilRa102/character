@@ -1,11 +1,13 @@
-//! A standalone layer-shell drawer with a static mascot and system reactions.
+//! Character's layer-shell drawer, with explicit push-to-talk voice interaction.
 
 mod mascot;
 mod model;
 
 use std::time::{Duration, Instant};
 
+use character_brain::{Brain, DEFAULT_PREAMBLE};
 use character_types::{Mode, NetworkStatus};
+use character_voice::{Recording, VoiceConfig, speak};
 use cosmic::{
     Application, Element,
     app::{Core, Settings, Task},
@@ -26,9 +28,9 @@ use model::{Drawer, Input, ManualEvent};
 
 struct NetworkWatcher;
 
-/// Opens the drawer on the active Wayland output. Must run on the main thread.
 ///
-/// Network connectivity is monitored; microphone, actions and LLM are not started.
+/// Network connectivity is monitored; microphone access remains disabled until voice mode
+/// is explicitly enabled.
 pub fn run() -> iced::Result {
     cosmic::app::run::<Character>(
         Settings::default()
@@ -44,6 +46,14 @@ struct Character {
     policy: character_core::Core,
     surface: window::Id,
     drawer: Drawer,
+    mode: Mode,
+    recording: Option<Recording>,
+    voice_config: Option<VoiceConfig>,
+    voice_busy: bool,
+    status: String,
+    transcript: Option<String>,
+    answer: Option<String>,
+    history: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +61,58 @@ enum Message {
     Input(Input),
     NetworkStatus(NetworkStatus),
     Pointer { surface: window::Id, inside: bool },
+    ToggleVoice,
+    StartRecording,
+    StopRecording,
+    VoiceComplete(Result<VoiceReply, String>),
+    SpeechComplete(Result<(), String>),
     Quit,
+}
+
+#[derive(Debug, Clone)]
+struct VoiceReply {
+    transcript: String,
+    answer: String,
+    piper_model: Option<std::path::PathBuf>,
+}
+
+impl Character {
+    fn finish_recording(&mut self) -> Task<Message> {
+        let Some(recording) = self.recording.take() else {
+            return Task::none();
+        };
+        let Some(config) = self.voice_config.take() else {
+            self.status = "Voice configuration was lost; recording discarded".into();
+            return Task::none();
+        };
+        let history = self.history.clone();
+        let recording_config = config.clone();
+        let model = config.ollama_model.clone();
+        self.voice_busy = true;
+        self.status = "Transcribing and waiting for the local model…".into();
+        Task::perform(
+            async move {
+                let transcript =
+                    tokio::task::spawn_blocking(move || recording.transcribe(&recording_config))
+                        .await
+                        .map_err(|error| error.to_string())?
+                        .map_err(|error| error.to_string())?;
+
+                let brain = Brain::local_ollama(&model, DEFAULT_PREAMBLE);
+                let answer = brain
+                    .reply_with_context(&transcript, &history)
+                    .await
+                    .map_err(|error| error.to_string())?;
+
+                Ok(VoiceReply {
+                    transcript,
+                    answer,
+                    piper_model: config.piper_model,
+                })
+            },
+            |result| Message::VoiceComplete(result).into(),
+        )
+    }
 }
 
 fn pointer_event(
@@ -98,13 +159,21 @@ impl Application for Character {
         let surface = window::Id::unique();
         let drawer = Drawer::default();
         let task = get_layer_surface(surface_settings(surface, drawer.size()));
-        tracing::info!("starting drawer; microphone is off");
+        tracing::info!("starting drawer; microphone is off until voice mode is explicitly enabled");
         (
             Self {
                 core,
                 policy: character_core::Core::new(Mode::default()),
                 surface,
                 drawer,
+                mode: Mode::EventsOnly,
+                recording: None,
+                voice_config: None,
+                voice_busy: false,
+                status: "Microphone off".into(),
+                transcript: None,
+                answer: None,
+                history: Vec::new(),
             },
             task,
         )
@@ -113,6 +182,82 @@ impl Application for Character {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Quit => iced::exit(),
+            Message::ToggleVoice => {
+                if self.mode == Mode::Voice {
+                    self.mode = Mode::EventsOnly;
+                    self.recording = None;
+                    self.voice_config = None;
+                    self.status = "Microphone off".into();
+                } else {
+                    self.mode = Mode::Voice;
+                    self.status = "Hold the button to talk".into();
+                }
+                Task::none()
+            }
+            Message::StartRecording => {
+                if self.mode != Mode::Voice || self.voice_busy || self.recording.is_some() {
+                    return Task::none();
+                }
+                let config = VoiceConfig::from_env();
+                match Recording::start() {
+                    Ok(recording) => {
+                        self.voice_config = Some(config);
+                        self.recording = Some(recording);
+                        self.status = "Listening — release to send".into();
+                    }
+                    Err(error) => {
+                        self.status = error.to_string();
+                        tracing::warn!(%error, "could not start push-to-talk recording");
+                    }
+                }
+                Task::none()
+            }
+            Message::StopRecording => self.finish_recording(),
+            Message::VoiceComplete(result) => match result {
+                Ok(reply) => {
+                    self.history
+                        .push((reply.transcript.clone(), reply.answer.clone()));
+                    if self.history.len() > 8 {
+                        self.history.remove(0);
+                    }
+                    self.transcript = Some(reply.transcript);
+                    self.answer = Some(reply.answer.clone());
+                    if let Some(piper_model) = reply.piper_model {
+                        self.status = "Reply ready; speaking…".into();
+                        let answer = reply.answer;
+                        Task::perform(
+                            async move {
+                                tokio::task::spawn_blocking(move || speak(&piper_model, &answer))
+                                    .await
+                                    .map_err(|error| error.to_string())?
+                                    .map_err(|error| error.to_string())
+                            },
+                            |result| Message::SpeechComplete(result).into(),
+                        )
+                    } else {
+                        self.voice_busy = false;
+                        self.status = "Reply ready".into();
+                        Task::none()
+                    }
+                }
+                Err(error) => {
+                    self.voice_busy = false;
+                    self.status = format!("Voice request failed: {error}");
+                    tracing::warn!(%error, "voice request failed");
+                    Task::none()
+                }
+            },
+            Message::SpeechComplete(result) => {
+                self.voice_busy = false;
+                self.status = match result {
+                    Ok(()) => "Reply ready".into(),
+                    Err(error) => {
+                        tracing::warn!(%error, "speech output failed");
+                        format!("Reply ready; speech output failed: {error}")
+                    }
+                };
+                Task::none()
+            }
             Message::NetworkStatus(status) => {
                 let Some(reaction) = self.policy.network_status_changed(status) else {
                     return Task::none();
@@ -136,6 +281,9 @@ impl Application for Character {
                         },
                         Instant::now(),
                     );
+                    if !inside && self.recording.is_some() {
+                        return self.finish_recording();
+                    }
                 }
                 Task::none()
             }
@@ -203,14 +351,24 @@ impl Application for Character {
     fn view_window(&self, _id: window::Id) -> Element<'_, Message> {
         let accent = mascot::accent(self.drawer.emotion);
         let content: Element<'_, Message> = if self.drawer.expanded() {
+            let microphone_status = if self.recording.is_some() {
+                "Microphone active"
+            } else if self.mode == Mode::Voice {
+                "Voice enabled"
+            } else {
+                "Microphone off"
+            };
             let header = row([])
                 .push(text::heading("Fen"))
                 .push(text::caption("ДЕМО-РЕЖИМ").class(cosmic::theme::Text::Color(accent)))
                 .push(widget::Space::new().width(Length::Fill))
-                .push(
-                    text::caption("●  МИКРОФОН ВЫКЛ.")
-                        .class(cosmic::theme::Text::Color(Color::from_rgb8(91, 215, 187))),
-                )
+                .push(text::caption(format!("●  {microphone_status}")).class(
+                    cosmic::theme::Text::Color(if self.recording.is_some() {
+                        Color::from_rgb8(237, 114, 104)
+                    } else {
+                        Color::from_rgb8(91, 215, 187)
+                    }),
+                ))
                 .push(button::text("Свернуть").on_press(Message::Input(Input::Toggle)))
                 .push(button::text("Выход").on_press(Message::Quit))
                 .align_y(Alignment::Center)
@@ -268,15 +426,67 @@ impl Application for Character {
                 .push(bubble)
                 .align_y(Alignment::Center)
                 .spacing(16);
-            let controls = ManualEvent::ALL
-                .into_iter()
-                .fold(row([]).spacing(10), |row, event| {
-                    row.push(
-                        button::standard(event.label())
-                            .on_press(Message::Input(Input::Manual(event)))
-                            .width(Length::Fill),
+            let voice_toggle = button::standard(if self.mode == Mode::Voice {
+                "Disable voice"
+            } else {
+                "Enable voice"
+            })
+            .on_press_maybe((!self.voice_busy).then_some(Message::ToggleVoice));
+
+            let voice_control: Element<'_, Message> = if self.mode == Mode::Voice {
+                widget::MouseArea::new(
+                    container(
+                        text::body(if self.recording.is_some() {
+                            "Recording — release to send"
+                        } else if self.voice_busy {
+                            "Working…"
+                        } else {
+                            "Hold to talk"
+                        })
+                        .class(cosmic::theme::Text::Color(Color::WHITE)),
                     )
-                });
+                    .center_x(Length::Fill)
+                    .padding(12)
+                    .width(Length::Fill)
+                    .style(|_| container::Style {
+                        background: Some(Color::from_rgb8(66, 75, 102).into()),
+                        border: Border {
+                            radius: 10.0.into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }),
+                )
+                .on_press(Message::StartRecording)
+                .on_release(Message::StopRecording)
+                .on_exit(Message::StopRecording)
+                .into()
+            } else {
+                widget::Space::new().height(0).into()
+            };
+            let demo_controls =
+                ManualEvent::ALL
+                    .into_iter()
+                    .fold(row([]).spacing(10), |row, event| {
+                        row.push(
+                            button::standard(event.label())
+                                .on_press(Message::Input(Input::Manual(event)))
+                                .width(Length::Fill),
+                        )
+                    });
+
+            let mut dialog = column([]).spacing(4);
+            if let Some(transcript) = &self.transcript {
+                dialog = dialog
+                    .push(text::caption("You"))
+                    .push(text::body(transcript.clone()));
+            }
+            if let Some(answer) = &self.answer {
+                dialog = dialog
+                    .push(text::caption("Fen"))
+                    .push(text::body(answer.clone()));
+            }
+
             column([])
                 .push(header)
                 .push(portrait)
@@ -284,7 +494,15 @@ impl Application for Character {
                     text::caption("ДЕМО-СОБЫТИЯ")
                         .class(cosmic::theme::Text::Color(Color::from_rgb8(142, 160, 185))),
                 )
-                .push(controls)
+                .push(demo_controls)
+                .push(
+                    row([])
+                        .push(voice_toggle)
+                        .push(text::caption(self.status.clone()))
+                        .spacing(8),
+                )
+                .push(voice_control)
+                .push(dialog)
                 .spacing(10)
                 .padding(16)
                 .into()
@@ -377,5 +595,23 @@ mod tests {
             inside: false,
         });
         assert!(app.drawer.deadline.is_some());
+    }
+
+    #[test]
+    fn voice_mode_requires_an_explicit_toggle_and_starts_with_microphone_off() {
+        let (mut app, _) = Character::init(Core::default(), ());
+        assert_eq!(app.mode, Mode::EventsOnly);
+        assert!(app.recording.is_none());
+
+        let _ = app.update(Message::StartRecording);
+        assert!(app.recording.is_none());
+
+        let _ = app.update(Message::ToggleVoice);
+        assert_eq!(app.mode, Mode::Voice);
+        assert!(app.recording.is_none());
+
+        let _ = app.update(Message::ToggleVoice);
+        assert_eq!(app.mode, Mode::EventsOnly);
+        assert!(app.recording.is_none());
     }
 }
