@@ -17,10 +17,10 @@ impl ManualEvent {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Message => "Message",
-            Self::Success => "Success",
-            Self::LowBattery => "Battery",
-            Self::Rest => "Rest",
+            Self::Message => "Новое",
+            Self::Success => "Готово",
+            Self::LowBattery => "Батарея",
+            Self::Rest => "Отдых",
         }
     }
 
@@ -29,29 +29,29 @@ impl ManualEvent {
             Self::Message => (
                 Emotion::Curious,
                 Tooltip {
-                    title: "Something new",
-                    body: "A demo message arrived. Shall we take a look?",
+                    title: "Что-то новое",
+                    body: "Пришло демо-сообщение. Посмотрим вместе?",
                 },
             ),
             Self::Success => (
                 Emotion::Happy,
                 Tooltip {
-                    title: "All done",
-                    body: "Demo completed. No system action was performed.",
+                    title: "Готово!",
+                    body: "Демо завершено — никаких действий в системе не выполнялось.",
                 },
             ),
             Self::LowBattery => (
                 Emotion::Worried,
                 Tooltip {
-                    title: "Battery: 15% (demo)",
-                    body: "Time to plug in. This is not a real battery reading.",
+                    title: "Заряд: 15% (демо)",
+                    body: "Пора подключить зарядку. Это значение не считывается из системы.",
                 },
             ),
             Self::Rest => (
                 Emotion::Sleepy,
                 Tooltip {
-                    title: "A quiet moment",
-                    body: "A little rest? I will be here when you need me.",
+                    title: "Тихая минутка",
+                    body: "Немного отдыха? Я буду рядом, когда понадоблюсь.",
                 },
             ),
         }
@@ -101,9 +101,9 @@ impl Drawer {
 
     pub fn size(&self) -> (u32, u32) {
         if self.expanded() {
-            (440, 280)
+            (560, 320)
         } else {
-            (160, 32)
+            (160, 40)
         }
     }
 
@@ -158,12 +158,12 @@ mod tests {
     fn starts_as_a_small_reopenable_tab() {
         let mut drawer = Drawer::default();
         assert_eq!(drawer.state, State::Peek);
-        assert_eq!(drawer.size(), (160, 32));
+        assert_eq!(drawer.size(), (160, 40));
         assert!(drawer.tooltip.is_none());
         assert!(drawer.deadline.is_none());
         drawer.update(Input::Toggle, Instant::now());
         assert!(drawer.expanded());
-        assert_eq!(drawer.size(), (440, 280));
+        assert_eq!(drawer.size(), (560, 320));
     }
 
     #[test]
