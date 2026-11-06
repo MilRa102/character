@@ -23,6 +23,7 @@ character-watch = { path = "crates/character-watch" }
 
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+futures-util = "0.3"
 libcosmic = { git = "https://github.com/pop-os/libcosmic", rev = "95236a944bfd51c63a2fc65fe50a592c47168d40", default-features = false, features = ["wayland", "tokio"] }
 rig = "0.46"
 serde = { version = "1", features = ["derive"] }
@@ -31,6 +32,7 @@ thiserror = "2"
 tokio = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

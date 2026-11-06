@@ -1,15 +1,17 @@
-//! MVP-0: a standalone layer-shell drawer with a static mascot and manual events.
+//! A standalone layer-shell drawer with a static mascot and system reactions.
 
 mod mascot;
 mod model;
 
 use std::time::{Duration, Instant};
 
+use character_types::{Mode, NetworkStatus};
 use cosmic::{
     Application, Element,
     app::{Core, Settings, Task},
     iced::{
         self, Alignment, Border, Color, Length, Subscription,
+        futures::SinkExt,
         platform_specific::{
             runtime::wayland::layer_surface::SctkLayerSurfaceSettings,
             shell::commands::layer_surface::{
@@ -22,9 +24,11 @@ use cosmic::{
 };
 use model::{Drawer, Input, ManualEvent};
 
+struct NetworkWatcher;
+
 /// Opens the drawer on the active Wayland output. Must run on the main thread.
 ///
-/// No microphone, system watcher, action executor or LLM is started by MVP-0.
+/// Network connectivity is monitored; microphone, actions and LLM are not started.
 pub fn run() -> iced::Result {
     cosmic::app::run::<Character>(
         Settings::default()
@@ -37,6 +41,7 @@ pub fn run() -> iced::Result {
 
 struct Character {
     core: Core,
+    policy: character_core::Core,
     surface: window::Id,
     drawer: Drawer,
 }
@@ -44,6 +49,7 @@ struct Character {
 #[derive(Debug, Clone)]
 enum Message {
     Input(Input),
+    NetworkStatus(NetworkStatus),
     Pointer { surface: window::Id, inside: bool },
     Quit,
 }
@@ -92,10 +98,11 @@ impl Application for Character {
         let surface = window::Id::unique();
         let drawer = Drawer::default();
         let task = get_layer_surface(surface_settings(surface, drawer.size()));
-        tracing::info!("starting manual drawer; microphone and system watchers are off");
+        tracing::info!("starting drawer; microphone is off");
         (
             Self {
                 core,
+                policy: character_core::Core::new(Mode::default()),
                 surface,
                 drawer,
             },
@@ -106,6 +113,19 @@ impl Application for Character {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Quit => iced::exit(),
+            Message::NetworkStatus(status) => {
+                let Some(reaction) = self.policy.network_status_changed(status) else {
+                    return Task::none();
+                };
+                let old_size = self.drawer.size();
+                self.drawer.update(Input::Network(reaction), Instant::now());
+                let size = self.drawer.size();
+                if old_size != size {
+                    set_size(self.surface, Some(size.0), Some(size.1))
+                } else {
+                    Task::none()
+                }
+            }
             Message::Pointer { surface, inside } => {
                 if surface == self.surface {
                     self.drawer.update(
@@ -145,7 +165,31 @@ impl Application for Character {
         } else {
             Subscription::none()
         };
-        Subscription::batch([pointer, timeout])
+        let network = if self.policy.mode() == Mode::Off {
+            Subscription::none()
+        } else {
+            Subscription::run_with(std::any::TypeId::of::<NetworkWatcher>(), |_| {
+                iced::stream::channel::<Message>(
+                    8,
+                    |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+                        let (sender, mut receiver) = tokio::sync::mpsc::channel(8);
+                        tokio::spawn(async move {
+                            if let Err(error) = character_watch::watch_network_status(sender).await
+                            {
+                                tracing::warn!(%error, "NetworkManager monitoring is unavailable");
+                            }
+                        });
+
+                        while let Some(status) = receiver.recv().await {
+                            if output.send(Message::NetworkStatus(status)).await.is_err() {
+                                break;
+                            }
+                        }
+                    },
+                )
+            })
+        };
+        Subscription::batch([pointer, timeout, network])
     }
 
     fn on_close_requested(&self, id: window::Id) -> Option<Message> {
@@ -192,7 +236,7 @@ impl Application for Character {
                 None => column([])
                     .push(text::heading("Quiet company"))
                     .push(text::body(
-                        "Choose a manual event below. Nothing is being monitored.",
+                        "Manual events are demos. Only network connectivity is monitored.",
                     ))
                     .spacing(8)
                     .width(Length::Fill)
