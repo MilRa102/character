@@ -7,7 +7,7 @@ use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
@@ -78,11 +78,11 @@ impl Recording {
     pub fn start() -> Result<Self, VoiceError> {
         let audio = TempFile::new("wav")?;
         let child = Command::new("arecord")
-            .args(["-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav"])
+            .args(["-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav"])
             .arg(&audio.path)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|source| VoiceError::Start {
                 program: "arecord",
@@ -152,9 +152,10 @@ impl Recording {
                 return Err(error.into());
             }
         };
+        let mut interrupted = false;
         if running {
             let pid = child.id();
-            let interrupted = Command::new("kill")
+            interrupted = Command::new("kill")
                 .args(["-INT", &pid.to_string()])
                 .status()
                 .is_ok_and(|status| status.success());
@@ -166,15 +167,26 @@ impl Recording {
                 return Err(error.into());
             }
         }
-        let status = child.wait()?;
-        if !status.success() {
+        let output = child.wait_with_output()?;
+        if !is_expected_arecord_exit(output.status, interrupted) {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = stderr.trim();
+            let details = if stderr.is_empty() {
+                format!("exited with {}", output.status)
+            } else {
+                format!("exited with {}: {stderr}", output.status)
+            };
             return Err(VoiceError::Command {
                 program: "arecord",
-                details: format!("exited with {status}"),
+                details,
             });
         }
         Ok(())
     }
+}
+
+fn is_expected_arecord_exit(status: ExitStatus, interrupted: bool) -> bool {
+    status.success() || (interrupted && status.code() == Some(1))
 }
 
 impl Drop for Recording {
@@ -334,6 +346,15 @@ mod tests {
             drop(temp);
             assert!(!path.exists());
         }
+    }
+
+    #[test]
+    fn arecord_sigint_exit_is_not_reported_as_a_recording_failure() {
+        let status = Command::new("sh").args(["-c", "exit 1"]).status().unwrap();
+        assert!(is_expected_arecord_exit(status, true));
+
+        let status = Command::new("sh").args(["-c", "exit 1"]).status().unwrap();
+        assert!(!is_expected_arecord_exit(status, false));
     }
 
     #[test]
