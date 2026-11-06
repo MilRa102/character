@@ -12,9 +12,11 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+character-core.workspace = true
 character-brain.workspace = true
 character-types.workspace = true
+character-watch.workspace = true
 character-voice.workspace = true
 libcosmic.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 tracing.workspace = true

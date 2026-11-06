@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use character_core::NetworkReaction;
 use character_types::{Emotion, State};
 
 pub const FOLD_AFTER: Duration = Duration::from_secs(12);
@@ -8,19 +9,17 @@ pub const FOLD_AFTER: Duration = Duration::from_secs(12);
 pub enum ManualEvent {
     Message,
     Success,
-    LowBattery,
     Rest,
 }
 
 impl ManualEvent {
-    pub const ALL: [Self; 4] = [Self::Message, Self::Success, Self::LowBattery, Self::Rest];
+    pub const ALL: [Self; 3] = [Self::Message, Self::Success, Self::Rest];
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Message => "Message",
-            Self::Success => "Success",
-            Self::LowBattery => "Battery",
-            Self::Rest => "Rest",
+            Self::Message => "Новое",
+            Self::Success => "Готово",
+            Self::Rest => "Отдых",
         }
     }
 
@@ -29,32 +28,44 @@ impl ManualEvent {
             Self::Message => (
                 Emotion::Curious,
                 Tooltip {
-                    title: "Something new",
-                    body: "A demo message arrived. Shall we take a look?",
+                    title: "Что-то новое",
+                    body: "Пришло демо-сообщение. Посмотрим вместе?",
                 },
             ),
             Self::Success => (
                 Emotion::Happy,
                 Tooltip {
-                    title: "All done",
-                    body: "Demo completed. No system action was performed.",
-                },
-            ),
-            Self::LowBattery => (
-                Emotion::Worried,
-                Tooltip {
-                    title: "Battery: 15% (demo)",
-                    body: "Time to plug in. This is not a real battery reading.",
+                    title: "Готово!",
+                    body: "Демо завершено — никаких действий в системе не выполнялось.",
                 },
             ),
             Self::Rest => (
                 Emotion::Sleepy,
                 Tooltip {
-                    title: "A quiet moment",
-                    body: "A little rest? I will be here when you need me.",
+                    title: "Тихая минутка",
+                    body: "Немного отдыха? Я буду рядом, когда понадоблюсь.",
                 },
             ),
         }
+    }
+}
+
+pub const fn network_reaction(reaction: NetworkReaction) -> (Emotion, Tooltip) {
+    match reaction {
+        NetworkReaction::Disconnected => (
+            Emotion::Worried,
+            Tooltip {
+                title: "Сеть отключена",
+                body: "Соединение пропало. Подожду, пока оно восстановится.",
+            },
+        ),
+        NetworkReaction::Connected => (
+            Emotion::Happy,
+            Tooltip {
+                title: "Сеть восстановлена",
+                body: "Соединение снова доступно.",
+            },
+        ),
     }
 }
 
@@ -68,6 +79,7 @@ pub struct Tooltip {
 pub enum Input {
     Toggle,
     Manual(ManualEvent),
+    Network(NetworkReaction),
     PointerEntered,
     PointerLeft,
     Tick(Instant),
@@ -103,7 +115,7 @@ impl Drawer {
         if self.expanded() {
             (520, 520)
         } else {
-            (160, 32)
+            (160, 40)
         }
     }
 
@@ -116,6 +128,13 @@ impl Drawer {
             }
             Input::Manual(event) => {
                 let (emotion, tooltip) = event.reaction();
+                self.state = State::Idle;
+                self.emotion = emotion;
+                self.tooltip = Some(tooltip);
+                self.arm_timeout(now);
+            }
+            Input::Network(reaction) => {
+                let (emotion, tooltip) = network_reaction(reaction);
                 self.state = State::Idle;
                 self.emotion = emotion;
                 self.tooltip = Some(tooltip);
@@ -158,7 +177,7 @@ mod tests {
     fn starts_as_a_small_reopenable_tab() {
         let mut drawer = Drawer::default();
         assert_eq!(drawer.state, State::Peek);
-        assert_eq!(drawer.size(), (160, 32));
+        assert_eq!(drawer.size(), (160, 40));
         assert!(drawer.tooltip.is_none());
         assert!(drawer.deadline.is_none());
         drawer.update(Input::Toggle, Instant::now());
@@ -182,14 +201,35 @@ mod tests {
             .map(|event| event.reaction().0)
             .into_iter()
             .collect();
-        assert_eq!(emotions.len(), 4);
+        assert_eq!(emotions.len(), 3);
+    }
+
+    #[test]
+    fn network_reactions_open_the_drawer_with_connectivity_tooltips() {
+        let mut drawer = Drawer::default();
+        let now = Instant::now();
+
+        drawer.update(Input::Network(NetworkReaction::Disconnected), now);
+        assert!(drawer.expanded());
+        assert_eq!(drawer.emotion, Emotion::Worried);
+        assert_eq!(
+            drawer.tooltip.map(|tooltip| tooltip.title),
+            Some("Сеть отключена")
+        );
+
+        drawer.update(Input::Network(NetworkReaction::Connected), now);
+        assert_eq!(drawer.emotion, Emotion::Happy);
+        assert_eq!(
+            drawer.tooltip.map(|tooltip| tooltip.title),
+            Some("Сеть восстановлена")
+        );
     }
 
     #[test]
     fn folds_at_the_exact_deadline_and_clears_the_tooltip() {
         let mut drawer = Drawer::default();
         let now = Instant::now();
-        drawer.update(Input::Manual(ManualEvent::LowBattery), now);
+        drawer.update(Input::Manual(ManualEvent::Message), now);
         drawer.update(Input::Tick(now + FOLD_AFTER - Duration::from_nanos(1)), now);
         assert!(drawer.expanded());
         drawer.update(Input::Tick(now + FOLD_AFTER), now);

@@ -54,6 +54,13 @@ pub enum Mode {
     Voice,
 }
 
+/// Connectivity state reported by the system network manager.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NetworkStatus {
+    Disconnected,
+    Connected,
+}
+
 impl Mode {
     /// Whether the microphone may be opened in this mode.
     pub const fn allows_microphone(self) -> bool {

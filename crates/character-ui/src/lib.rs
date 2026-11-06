@@ -6,13 +6,14 @@ mod model;
 use std::time::{Duration, Instant};
 
 use character_brain::{Brain, DEFAULT_PREAMBLE};
-use character_types::Mode;
+use character_types::{Mode, NetworkStatus};
 use character_voice::{Recording, VoiceConfig, speak};
 use cosmic::{
     Application, Element,
     app::{Core, Settings, Task},
     iced::{
         self, Alignment, Border, Color, Length, Subscription,
+        futures::SinkExt,
         platform_specific::{
             runtime::wayland::layer_surface::SctkLayerSurfaceSettings,
             shell::commands::layer_surface::{
@@ -25,7 +26,11 @@ use cosmic::{
 };
 use model::{Drawer, Input, ManualEvent};
 
-/// Opens the drawer on the active Wayland output. Must run on the main thread.
+struct NetworkWatcher;
+
+///
+/// Network connectivity is monitored; microphone access remains disabled until voice mode
+/// is explicitly enabled.
 pub fn run() -> iced::Result {
     cosmic::app::run::<Character>(
         Settings::default()
@@ -38,6 +43,7 @@ pub fn run() -> iced::Result {
 
 struct Character {
     core: Core,
+    policy: character_core::Core,
     surface: window::Id,
     drawer: Drawer,
     mode: Mode,
@@ -53,6 +59,7 @@ struct Character {
 #[derive(Debug, Clone)]
 enum Message {
     Input(Input),
+    NetworkStatus(NetworkStatus),
     Pointer { surface: window::Id, inside: bool },
     ToggleVoice,
     StartRecording,
@@ -156,6 +163,7 @@ impl Application for Character {
         (
             Self {
                 core,
+                policy: character_core::Core::new(Mode::default()),
                 surface,
                 drawer,
                 mode: Mode::EventsOnly,
@@ -250,6 +258,19 @@ impl Application for Character {
                 };
                 Task::none()
             }
+            Message::NetworkStatus(status) => {
+                let Some(reaction) = self.policy.network_status_changed(status) else {
+                    return Task::none();
+                };
+                let old_size = self.drawer.size();
+                self.drawer.update(Input::Network(reaction), Instant::now());
+                let size = self.drawer.size();
+                if old_size != size {
+                    set_size(self.surface, Some(size.0), Some(size.1))
+                } else {
+                    Task::none()
+                }
+            }
             Message::Pointer { surface, inside } => {
                 if surface == self.surface {
                     self.drawer.update(
@@ -292,7 +313,31 @@ impl Application for Character {
         } else {
             Subscription::none()
         };
-        Subscription::batch([pointer, timeout])
+        let network = if self.policy.mode() == Mode::Off {
+            Subscription::none()
+        } else {
+            Subscription::run_with(std::any::TypeId::of::<NetworkWatcher>(), |_| {
+                iced::stream::channel::<Message>(
+                    8,
+                    |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+                        let (sender, mut receiver) = tokio::sync::mpsc::channel(8);
+                        tokio::spawn(async move {
+                            if let Err(error) = character_watch::watch_network_status(sender).await
+                            {
+                                tracing::warn!(%error, "NetworkManager monitoring is unavailable");
+                            }
+                        });
+
+                        while let Some(status) = receiver.recv().await {
+                            if output.send(Message::NetworkStatus(status)).await.is_err() {
+                                break;
+                            }
+                        }
+                    },
+                )
+            })
+        };
+        Subscription::batch([pointer, timeout, network])
     }
 
     fn on_close_requested(&self, id: window::Id) -> Option<Message> {
@@ -315,57 +360,72 @@ impl Application for Character {
             };
             let header = row([])
                 .push(text::heading("Fen"))
-                .push(
-                    text::caption(microphone_status).class(cosmic::theme::Text::Color(
-                        if self.recording.is_some() {
-                            Color::from_rgb8(237, 114, 104)
-                        } else {
-                            Color::from_rgb8(161, 172, 188)
-                        },
-                    )),
-                )
+                .push(text::caption("ДЕМО-РЕЖИМ").class(cosmic::theme::Text::Color(accent)))
                 .push(widget::Space::new().width(Length::Fill))
-                .push(button::text("Fold").on_press(Message::Input(Input::Toggle)))
-                .push(button::text("Quit").on_press(Message::Quit))
+                .push(text::caption(format!("●  {microphone_status}")).class(
+                    cosmic::theme::Text::Color(if self.recording.is_some() {
+                        Color::from_rgb8(237, 114, 104)
+                    } else {
+                        Color::from_rgb8(91, 215, 187)
+                    }),
+                ))
+                .push(button::text("Свернуть").on_press(Message::Input(Input::Toggle)))
+                .push(button::text("Выход").on_press(Message::Quit))
                 .align_y(Alignment::Center)
-                .spacing(8);
+                .spacing(10);
 
             let bubble: Element<'_, Message> = match self.drawer.tooltip {
                 Some(tooltip) => container(
                     column([])
-                        .push(text::heading(tooltip.title))
+                        .push(
+                            text::heading(tooltip.title).class(cosmic::theme::Text::Color(accent)),
+                        )
                         .push(text::body(tooltip.body))
-                        .spacing(8),
+                        .spacing(10),
                 )
-                .padding(12)
+                .padding(16)
                 .width(Length::Fill)
                 .style(move |_| container::Style {
-                    background: Some(Color::from_rgb8(48, 53, 69).into()),
+                    background: Some(Color::from_rgb8(23, 36, 57).into()),
                     border: Border {
-                        radius: 12.0.into(),
-                        ..Default::default()
+                        color: Color { a: 0.45, ..accent },
+                        width: 1.0,
+                        radius: 18.0.into(),
                     },
                     ..Default::default()
                 })
                 .into(),
-                None => column([])
-                    .push(text::heading("Quiet company"))
-                    .push(text::body(
-                        "Microphone stays off until you explicitly enable voice mode.",
-                    ))
-                    .spacing(8)
-                    .width(Length::Fill)
-                    .into(),
+                None => container(
+                    column([])
+                        .push(text::heading("Рядом").class(cosmic::theme::Text::Color(accent)))
+                        .push(text::body(
+                            "Выберите событие или дождитесь изменения состояния сети.",
+                        ))
+                        .spacing(10),
+                )
+                .padding(16)
+                .width(Length::Fill)
+                .style(move |_| container::Style {
+                    background: Some(Color::from_rgb8(23, 36, 57).into()),
+                    border: Border {
+                        color: Color { a: 0.45, ..accent },
+                        width: 1.0,
+                        radius: 18.0.into(),
+                    },
+                    ..Default::default()
+                })
+                .into(),
             };
             let portrait = row([])
                 .push(
-                    widget::Canvas::new(mascot::Mascot(self.drawer.emotion))
-                        .width(160)
-                        .height(144),
+                    widget::image::Image::new(mascot::image(self.drawer.emotion))
+                        .width(176)
+                        .height(158)
+                        .content_fit(iced::ContentFit::Contain),
                 )
                 .push(bubble)
                 .align_y(Alignment::Center)
-                .spacing(8);
+                .spacing(16);
             let voice_toggle = button::standard(if self.mode == Mode::Voice {
                 "Disable voice"
             } else {
@@ -402,21 +462,18 @@ impl Application for Character {
                 .on_exit(Message::StopRecording)
                 .into()
             } else {
-                let controls =
-                    ManualEvent::ALL
-                        .into_iter()
-                        .fold(row([]).spacing(8), |row, event| {
-                            row.push(
-                                button::standard(event.label())
-                                    .on_press(Message::Input(Input::Manual(event)))
-                                    .width(Length::Fill),
-                            )
-                        });
-                column([])
-                    .push(text::caption("Manual demo events"))
-                    .push(controls)
-                    .into()
+                widget::Space::new().height(0).into()
             };
+            let demo_controls =
+                ManualEvent::ALL
+                    .into_iter()
+                    .fold(row([]).spacing(10), |row, event| {
+                        row.push(
+                            button::standard(event.label())
+                                .on_press(Message::Input(Input::Manual(event)))
+                                .width(Length::Fill),
+                        )
+                    });
 
             let mut dialog = column([]).spacing(4);
             if let Some(transcript) = &self.transcript {
@@ -434,6 +491,11 @@ impl Application for Character {
                 .push(header)
                 .push(portrait)
                 .push(
+                    text::caption("ДЕМО-СОБЫТИЯ")
+                        .class(cosmic::theme::Text::Color(Color::from_rgb8(142, 160, 185))),
+                )
+                .push(demo_controls)
+                .push(
                     row([])
                         .push(voice_toggle)
                         .push(text::caption(self.status.clone()))
@@ -441,36 +503,44 @@ impl Application for Character {
                 )
                 .push(voice_control)
                 .push(dialog)
-                .spacing(8)
-                .padding(12)
+                .spacing(10)
+                .padding(16)
                 .into()
         } else {
             button::custom(
                 row([])
-                    .push(text::body("/\\_/\\").class(cosmic::theme::Text::Color(accent)))
+                    .push(
+                        widget::image::Image::new(mascot::calm())
+                            .width(32)
+                            .height(32)
+                            .content_fit(iced::ContentFit::Contain),
+                    )
                     .push(text::body("Fen"))
-                    .spacing(10)
+                    .push(widget::Space::new().width(Length::Fill))
+                    .push(text::caption("⌄").class(cosmic::theme::Text::Color(accent)))
+                    .spacing(8)
                     .align_y(Alignment::Center),
             )
             .on_press(Message::Input(Input::Toggle))
             .width(Length::Fill)
             .height(Length::Fill)
+            .padding([2, 12])
             .into()
         };
         container(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .style(move |_| container::Style {
-                text_color: Some(Color::from_rgb8(235, 239, 246)),
-                background: Some(Color::from_rgba8(27, 31, 43, 0.97).into()),
+                text_color: Some(Color::from_rgb8(231, 239, 250)),
+                background: Some(Color::from_rgba8(11, 19, 34, 0.97).into()),
                 border: Border {
                     color: Color { a: 0.65, ..accent },
-                    width: 1.0,
+                    width: 1.2,
                     radius: iced::border::Radius {
                         top_left: 0.0,
                         top_right: 0.0,
-                        bottom_left: 16.0,
-                        bottom_right: 16.0,
+                        bottom_left: 24.0,
+                        bottom_right: 24.0,
                     },
                 },
                 ..Default::default()
@@ -491,7 +561,7 @@ mod tests {
         assert_eq!(settings.layer, Layer::Top);
         assert_eq!(settings.keyboard_interactivity, KeyboardInteractivity::None);
         assert_eq!(settings.exclusive_zone, 0);
-        assert_eq!(settings.size, Some((Some(160), Some(32))));
+        assert_eq!(settings.size, Some((Some(160), Some(40))));
     }
 
     #[test]
