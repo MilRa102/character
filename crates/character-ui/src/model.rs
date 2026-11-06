@@ -17,9 +17,9 @@ impl ManualEvent {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Message => "Message",
-            Self::Success => "Success",
-            Self::Rest => "Rest",
+            Self::Message => "Новое",
+            Self::Success => "Готово",
+            Self::Rest => "Отдых",
         }
     }
 
@@ -28,22 +28,22 @@ impl ManualEvent {
             Self::Message => (
                 Emotion::Curious,
                 Tooltip {
-                    title: "Something new",
-                    body: "A demo message arrived. Shall we take a look?",
+                    title: "Что-то новое",
+                    body: "Пришло демо-сообщение. Посмотрим вместе?",
                 },
             ),
             Self::Success => (
                 Emotion::Happy,
                 Tooltip {
-                    title: "All done",
-                    body: "Demo completed. No system action was performed.",
+                    title: "Готово!",
+                    body: "Демо завершено — никаких действий в системе не выполнялось.",
                 },
             ),
             Self::Rest => (
                 Emotion::Sleepy,
                 Tooltip {
-                    title: "A quiet moment",
-                    body: "A little rest? I will be here when you need me.",
+                    title: "Тихая минутка",
+                    body: "Немного отдыха? Я буду рядом, когда понадоблюсь.",
                 },
             ),
         }
@@ -55,15 +55,15 @@ pub const fn network_reaction(reaction: NetworkReaction) -> (Emotion, Tooltip) {
         NetworkReaction::Disconnected => (
             Emotion::Worried,
             Tooltip {
-                title: "Network disconnected",
-                body: "The connection is down. I’ll stay quiet while it comes back.",
+                title: "Сеть отключена",
+                body: "Соединение пропало. Подожду, пока оно восстановится.",
             },
         ),
         NetworkReaction::Connected => (
             Emotion::Happy,
             Tooltip {
-                title: "Network restored",
-                body: "The connection is back.",
+                title: "Сеть восстановлена",
+                body: "Соединение снова доступно.",
             },
         ),
     }
@@ -113,9 +113,9 @@ impl Drawer {
 
     pub fn size(&self) -> (u32, u32) {
         if self.expanded() {
-            (440, 280)
+            (560, 320)
         } else {
-            (160, 32)
+            (160, 40)
         }
     }
 
@@ -177,12 +177,12 @@ mod tests {
     fn starts_as_a_small_reopenable_tab() {
         let mut drawer = Drawer::default();
         assert_eq!(drawer.state, State::Peek);
-        assert_eq!(drawer.size(), (160, 32));
+        assert_eq!(drawer.size(), (160, 40));
         assert!(drawer.tooltip.is_none());
         assert!(drawer.deadline.is_none());
         drawer.update(Input::Toggle, Instant::now());
         assert!(drawer.expanded());
-        assert_eq!(drawer.size(), (440, 280));
+        assert_eq!(drawer.size(), (560, 320));
     }
 
     #[test]
@@ -214,14 +214,14 @@ mod tests {
         assert_eq!(drawer.emotion, Emotion::Worried);
         assert_eq!(
             drawer.tooltip.map(|tooltip| tooltip.title),
-            Some("Network disconnected")
+            Some("Сеть отключена")
         );
 
         drawer.update(Input::Network(NetworkReaction::Connected), now);
         assert_eq!(drawer.emotion, Emotion::Happy);
         assert_eq!(
             drawer.tooltip.map(|tooltip| tooltip.title),
-            Some("Network restored")
+            Some("Сеть восстановлена")
         );
     }
 

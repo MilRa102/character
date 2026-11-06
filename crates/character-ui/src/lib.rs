@@ -205,55 +205,72 @@ impl Application for Character {
         let content: Element<'_, Message> = if self.drawer.expanded() {
             let header = row([])
                 .push(text::heading("Fen"))
-                .push(
-                    text::caption("Microphone off")
-                        .class(cosmic::theme::Text::Color(Color::from_rgb8(161, 172, 188))),
-                )
+                .push(text::caption("ДЕМО-РЕЖИМ").class(cosmic::theme::Text::Color(accent)))
                 .push(widget::Space::new().width(Length::Fill))
-                .push(button::text("Fold").on_press(Message::Input(Input::Toggle)))
-                .push(button::text("Quit").on_press(Message::Quit))
+                .push(
+                    text::caption("●  МИКРОФОН ВЫКЛ.")
+                        .class(cosmic::theme::Text::Color(Color::from_rgb8(91, 215, 187))),
+                )
+                .push(button::text("Свернуть").on_press(Message::Input(Input::Toggle)))
+                .push(button::text("Выход").on_press(Message::Quit))
                 .align_y(Alignment::Center)
-                .spacing(8);
+                .spacing(10);
 
             let bubble: Element<'_, Message> = match self.drawer.tooltip {
                 Some(tooltip) => container(
                     column([])
-                        .push(text::heading(tooltip.title))
+                        .push(
+                            text::heading(tooltip.title).class(cosmic::theme::Text::Color(accent)),
+                        )
                         .push(text::body(tooltip.body))
-                        .spacing(8),
+                        .spacing(10),
                 )
-                .padding(12)
+                .padding(16)
                 .width(Length::Fill)
                 .style(move |_| container::Style {
-                    background: Some(Color::from_rgb8(48, 53, 69).into()),
+                    background: Some(Color::from_rgb8(23, 36, 57).into()),
                     border: Border {
-                        radius: 12.0.into(),
-                        ..Default::default()
+                        color: Color { a: 0.45, ..accent },
+                        width: 1.0,
+                        radius: 18.0.into(),
                     },
                     ..Default::default()
                 })
                 .into(),
-                None => column([])
-                    .push(text::heading("Quiet company"))
-                    .push(text::body(
-                        "Manual events are demos. Only network connectivity is monitored.",
-                    ))
-                    .spacing(8)
-                    .width(Length::Fill)
-                    .into(),
+                None => container(
+                    column([])
+                        .push(text::heading("Рядом").class(cosmic::theme::Text::Color(accent)))
+                        .push(text::body(
+                            "Выберите событие или дождитесь изменения состояния сети.",
+                        ))
+                        .spacing(10),
+                )
+                .padding(16)
+                .width(Length::Fill)
+                .style(move |_| container::Style {
+                    background: Some(Color::from_rgb8(23, 36, 57).into()),
+                    border: Border {
+                        color: Color { a: 0.45, ..accent },
+                        width: 1.0,
+                        radius: 18.0.into(),
+                    },
+                    ..Default::default()
+                })
+                .into(),
             };
             let portrait = row([])
                 .push(
-                    widget::Canvas::new(mascot::Mascot(self.drawer.emotion))
-                        .width(160)
-                        .height(144),
+                    widget::image::Image::new(mascot::image(self.drawer.emotion))
+                        .width(176)
+                        .height(158)
+                        .content_fit(iced::ContentFit::Contain),
                 )
                 .push(bubble)
                 .align_y(Alignment::Center)
-                .spacing(8);
+                .spacing(16);
             let controls = ManualEvent::ALL
                 .into_iter()
-                .fold(row([]).spacing(8), |row, event| {
+                .fold(row([]).spacing(10), |row, event| {
                     row.push(
                         button::standard(event.label())
                             .on_press(Message::Input(Input::Manual(event)))
@@ -263,38 +280,49 @@ impl Application for Character {
             column([])
                 .push(header)
                 .push(portrait)
-                .push(text::caption("Manual demo events"))
+                .push(
+                    text::caption("ДЕМО-СОБЫТИЯ")
+                        .class(cosmic::theme::Text::Color(Color::from_rgb8(142, 160, 185))),
+                )
                 .push(controls)
-                .spacing(8)
-                .padding(12)
+                .spacing(10)
+                .padding(16)
                 .into()
         } else {
             button::custom(
                 row([])
-                    .push(text::body("/\\_/\\").class(cosmic::theme::Text::Color(accent)))
+                    .push(
+                        widget::image::Image::new(mascot::calm())
+                            .width(32)
+                            .height(32)
+                            .content_fit(iced::ContentFit::Contain),
+                    )
                     .push(text::body("Fen"))
-                    .spacing(10)
+                    .push(widget::Space::new().width(Length::Fill))
+                    .push(text::caption("⌄").class(cosmic::theme::Text::Color(accent)))
+                    .spacing(8)
                     .align_y(Alignment::Center),
             )
             .on_press(Message::Input(Input::Toggle))
             .width(Length::Fill)
             .height(Length::Fill)
+            .padding([2, 12])
             .into()
         };
         container(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .style(move |_| container::Style {
-                text_color: Some(Color::from_rgb8(235, 239, 246)),
-                background: Some(Color::from_rgba8(27, 31, 43, 0.97).into()),
+                text_color: Some(Color::from_rgb8(231, 239, 250)),
+                background: Some(Color::from_rgba8(11, 19, 34, 0.97).into()),
                 border: Border {
                     color: Color { a: 0.65, ..accent },
-                    width: 1.0,
+                    width: 1.2,
                     radius: iced::border::Radius {
                         top_left: 0.0,
                         top_right: 0.0,
-                        bottom_left: 16.0,
-                        bottom_right: 16.0,
+                        bottom_left: 24.0,
+                        bottom_right: 24.0,
                     },
                 },
                 ..Default::default()
@@ -315,7 +343,7 @@ mod tests {
         assert_eq!(settings.layer, Layer::Top);
         assert_eq!(settings.keyboard_interactivity, KeyboardInteractivity::None);
         assert_eq!(settings.exclusive_zone, 0);
-        assert_eq!(settings.size, Some((Some(160), Some(32))));
+        assert_eq!(settings.size, Some((Some(160), Some(40))));
     }
 
     #[test]
