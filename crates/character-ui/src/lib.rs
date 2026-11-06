@@ -358,17 +358,51 @@ impl Application for Character {
             } else {
                 "Microphone off"
             };
+            let voice_toggle = button::standard(if self.mode == Mode::Voice {
+                "Микрофон: вкл."
+            } else {
+                "Микрофон: выкл."
+            })
+            .on_press_maybe(
+                (!self.voice_busy && self.recording.is_none()).then_some(Message::ToggleVoice),
+            );
+            let recording = self.recording.is_some();
+            let microphone_button = widget::MouseArea::new(
+                container(text::body("🎙").class(cosmic::theme::Text::Color(Color::WHITE)))
+                    .width(Length::Fixed(44.0))
+                    .height(Length::Fixed(44.0))
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .style(move |_| container::Style {
+                        background: Some(
+                            if recording {
+                                Color::from_rgb8(26, 176, 113)
+                            } else {
+                                Color::from_rgb8(60, 70, 88)
+                            }
+                            .into(),
+                        ),
+                        border: Border {
+                            color: if recording {
+                                Color::from_rgb8(78, 238, 164)
+                            } else {
+                                Color::from_rgb8(99, 112, 137)
+                            },
+                            width: 1.0,
+                            radius: 22.0.into(),
+                        },
+                        ..Default::default()
+                    }),
+            )
+            .on_press(Message::StartRecording)
+            .on_release(Message::StopRecording)
+            .on_exit(Message::StopRecording);
             let header = row([])
                 .push(text::heading("Fen"))
                 .push(text::caption("ДЕМО-РЕЖИМ").class(cosmic::theme::Text::Color(accent)))
                 .push(widget::Space::new().width(Length::Fill))
-                .push(text::caption(format!("●  {microphone_status}")).class(
-                    cosmic::theme::Text::Color(if self.recording.is_some() {
-                        Color::from_rgb8(237, 114, 104)
-                    } else {
-                        Color::from_rgb8(91, 215, 187)
-                    }),
-                ))
+                .push(voice_toggle)
+                .push(microphone_button)
                 .push(button::text("Свернуть").on_press(Message::Input(Input::Toggle)))
                 .push(button::text("Выход").on_press(Message::Quit))
                 .align_y(Alignment::Center)
@@ -426,44 +460,6 @@ impl Application for Character {
                 .push(bubble)
                 .align_y(Alignment::Center)
                 .spacing(16);
-            let voice_toggle = button::standard(if self.mode == Mode::Voice {
-                "Disable voice"
-            } else {
-                "Enable voice"
-            })
-            .on_press_maybe((!self.voice_busy).then_some(Message::ToggleVoice));
-
-            let voice_control: Element<'_, Message> = if self.mode == Mode::Voice {
-                widget::MouseArea::new(
-                    container(
-                        text::body(if self.recording.is_some() {
-                            "Recording — release to send"
-                        } else if self.voice_busy {
-                            "Working…"
-                        } else {
-                            "Hold to talk"
-                        })
-                        .class(cosmic::theme::Text::Color(Color::WHITE)),
-                    )
-                    .center_x(Length::Fill)
-                    .padding(12)
-                    .width(Length::Fill)
-                    .style(|_| container::Style {
-                        background: Some(Color::from_rgb8(66, 75, 102).into()),
-                        border: Border {
-                            radius: 10.0.into(),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }),
-                )
-                .on_press(Message::StartRecording)
-                .on_release(Message::StopRecording)
-                .on_exit(Message::StopRecording)
-                .into()
-            } else {
-                widget::Space::new().height(0).into()
-            };
             let demo_controls =
                 ManualEvent::ALL
                     .into_iter()
@@ -497,11 +493,11 @@ impl Application for Character {
                 .push(demo_controls)
                 .push(
                     row([])
-                        .push(voice_toggle)
+                        .push(text::caption(microphone_status))
+                        .push(widget::Space::new().width(Length::Fill))
                         .push(text::caption(self.status.clone()))
                         .spacing(8),
                 )
-                .push(voice_control)
                 .push(dialog)
                 .spacing(10)
                 .padding(16)
