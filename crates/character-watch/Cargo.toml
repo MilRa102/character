@@ -1,6 +1,6 @@
 [package]
 name = "character-watch"
-description = "D-Bus and Wayland observers feeding system events to the Character companion"
+description = "NetworkManager D-Bus observer feeding connectivity events to the Character companion"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,3 +10,10 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+character-types.workspace = true
+futures-util.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+zbus.workspace = true

@@ -1403,8 +1403,11 @@ dependencies = [
 name = "character-ui"
 version = "0.1.0"
 dependencies = [
+ "character-core",
  "character-types",
+ "character-watch",
  "libcosmic",
+ "tokio",
  "tracing",
 ]
 
@@ -1415,6 +1418,13 @@ version = "0.1.0"
 [[package]]
 name = "character-watch"
 version = "0.1.0"
+dependencies = [
+ "character-types",
+ "futures-util",
+ "tokio",
+ "tracing",
+ "zbus",
+]
 
 [[package]]
 name = "chrono"

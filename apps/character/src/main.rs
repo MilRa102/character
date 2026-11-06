@@ -1,6 +1,6 @@
 //! The `character` application.
 //!
-//! Opens the MVP-0 drawer by default, or the core lifecycle with `--headless`.
+//! Opens the MVP-1 drawer by default, or the core lifecycle with `--headless`.
 
 use anyhow::{Context, Result};
 use character_core::Core;

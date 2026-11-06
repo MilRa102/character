@@ -9,8 +9,6 @@ static NEW: LazyLock<Handle> =
     LazyLock::new(|| Handle::from_bytes(&include_bytes!("../assets/fen/fen_new.png")[..]));
 static DONE: LazyLock<Handle> =
     LazyLock::new(|| Handle::from_bytes(&include_bytes!("../assets/fen/fen_done.png")[..]));
-static BATTERY: LazyLock<Handle> =
-    LazyLock::new(|| Handle::from_bytes(&include_bytes!("../assets/fen/fen_battery.png")[..]));
 static REST: LazyLock<Handle> =
     LazyLock::new(|| Handle::from_bytes(&include_bytes!("../assets/fen/fen_rest.png")[..]));
 
@@ -22,7 +20,7 @@ pub fn image(emotion: Emotion) -> Handle {
     match emotion {
         Emotion::Happy | Emotion::Proud => DONE.clone(),
         Emotion::Curious | Emotion::Confused => NEW.clone(),
-        Emotion::Worried => BATTERY.clone(),
+        Emotion::Worried => CALM.clone(),
         Emotion::Sleepy => REST.clone(),
         Emotion::Alert => CALM.clone(),
     }
